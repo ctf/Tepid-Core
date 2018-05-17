@@ -1,13 +1,14 @@
 package ca.mcgill.science.ctf.tepid.server.tables
 
 import ca.mcgill.science.ctf.tepid.server.Configs
-import ca.mcgill.science.ctf.tepid.server.models.PrintJob
+import ca.mcgill.science.ctf.tepid.server.models.*
 import ca.mcgill.science.ctf.tepid.server.utils.Printer
-import org.jetbrains.exposed.sql.Table
-import org.jetbrains.exposed.sql.and
-import org.jetbrains.exposed.sql.insert
-import org.jetbrains.exposed.sql.select
+import io.reactivex.Observable
+import org.jetbrains.exposed.sql.*
+import org.jetbrains.exposed.sql.statements.UpdateStatement
 import org.jetbrains.exposed.sql.transactions.transaction
+import java.io.File
+import java.util.concurrent.ConcurrentHashMap
 
 object PrintJobs : Table() {
     val id = varchar("id", 128).primaryKey()
@@ -66,6 +67,9 @@ object PrintJobs : Table() {
         }
     }
 
+    private fun get(id: String): ResultRow? =
+            select { PrintJobs.id eq PrintJobs.id }.firstOrNull()
+
     /**
      * Gets the total quota cost used by the short user
      * Jobs counted are those that have printed and are not refunded
@@ -73,4 +77,57 @@ object PrintJobs : Table() {
     fun getTotalQuotaUsed(shortUser: String): Int = transaction {
         select { (PrintJobs.shortUser eq shortUser) and (printed neq -1) and (refunded eq false) }.sumBy { it[quotaCost] }
     }
+
+    /**
+     * Helper function to update the print job of the given [id]
+     *
+     * Returns [true] if a row was updated in the transaction, and [false] otherwise
+     */
+    fun update(id: String, action: PrintJobs.(UpdateStatement) -> Unit): Boolean =
+            update({ PrintJobs.id eq id }, 1, action) == 1
+
+    /**
+     * Receives the print stage for the supplied job
+     * See [PrintStage] for class options
+     */
+    fun stage(id: String): PrintStage = transaction {
+        get(id)?.run {
+
+            // lazy retrievers
+            val failed: Long by lazy { this[PrintJobs.failed] }
+            val printed: Long by lazy { this[PrintJobs.printed] }
+            val received: Long by lazy { this[PrintJobs.received] }
+            val processed: Long by lazy { this[PrintJobs.processed] }
+            val created: Long by lazy { this[PrintJobs.created] }
+
+            // valid if processed or printed
+            val destination: String by lazy { this[PrintJobs.destination]!! }
+            // valid if failed
+            val error: String by lazy { this[PrintJobs.error]!! }
+
+            val pageCount: Int by lazy { this[PrintJobs.pageCount] }
+            val colourPageCount: Int by lazy { this[PrintJobs.colourPageCount] }
+
+            val fileSize: Long by lazy {
+                try {
+                    val file = File(this[file])
+                    if (file.isFile)
+                        file.length()
+                    else
+                        0L
+                } catch (e: Exception) {
+                    0L
+                }
+            }
+
+            when {
+                failed != -1L -> Failed(failed, error)
+                printed != -1L -> Printed(printed, destination, pageCount, colourPageCount)
+                received != -1L -> Received(received, fileSize)
+                processed != -1L -> Processed(processed)
+                else -> Created(created)
+            }
+        } ?: NotFound
+    }
+
 }

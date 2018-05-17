@@ -38,47 +38,9 @@ data class PrintJob(
         val file: File) : PrintResponse() {
 
     /**
-     * Fetch the current print job status from the db
+     * Fetch the current print job stage from the db
      */
-    fun status(): PrintStage = transaction {
-        PrintJobs.select { PrintJobs.id eq id }.limit(1).firstOrNull()?.run {
-
-            // lazy retrievers
-            val failed: Long by lazy { this[PrintJobs.failed] }
-            val printed: Long by lazy { this[PrintJobs.printed] }
-            val received: Long by lazy { this[PrintJobs.received] }
-            val processed: Long by lazy { this[PrintJobs.processed] }
-            val created: Long by lazy { this[PrintJobs.created] }
-
-            // valid if processed or printed
-            val destination: String by lazy { this[PrintJobs.destination]!! }
-            // valid if failed
-            val error: String by lazy { this[PrintJobs.error]!! }
-
-            val pageCount: Int by lazy { this[PrintJobs.pageCount] }
-            val colourPageCount: Int by lazy { this[PrintJobs.colourPageCount] }
-
-            val fileSize: Long by lazy {
-                try {
-                    val file = File(this[PrintJobs.file])
-                    if (file.isFile)
-                        file.length()
-                    else
-                        0L
-                } catch (e: Exception) {
-                    0L
-                }
-            }
-
-            when {
-                failed != -1L -> Failed(failed, error)
-                printed != -1L -> Printed(printed, destination, pageCount, colourPageCount)
-                received != -1L -> Received(received, fileSize)
-                processed != -1L -> Processed(processed)
-                else -> Created(created)
-            }
-        } ?: Deleted
-    }
+    fun stage(): PrintStage = PrintJobs.stage(id)
 
 }
 
@@ -120,4 +82,4 @@ data class Processed(val time: Long) : PrintStage()
 data class Received(val time: Long, val fileSize: Long) : PrintStage()
 data class Printed(val time: Long, val destination: String, val pageCount: Int, val colourPageCount: Int) : PrintStage()
 data class Failed(val time: Long, val message: String) : PrintStage()
-object Deleted : PrintStage()
+object NotFound : PrintStage()

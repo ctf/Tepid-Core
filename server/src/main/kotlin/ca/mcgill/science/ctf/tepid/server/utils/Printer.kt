@@ -6,7 +6,6 @@ import ca.mcgill.science.ctf.tepid.server.models.*
 import ca.mcgill.science.ctf.tepid.server.tables.PrintJobs
 import org.jetbrains.exposed.sql.statements.UpdateStatement
 import org.jetbrains.exposed.sql.transactions.transaction
-import org.jetbrains.exposed.sql.update
 import org.tukaani.xz.XZInputStream
 import org.tukaani.xz.XZOutputStream
 import java.io.*
@@ -54,14 +53,8 @@ object Printer : PrinterContract, WithLogging() {
     private inline val tmpDir: File
         get() = Configs.tmpDir
 
-    /**
-     * Helper function to update the print job of the given [id]
-     *
-     * Returns [true] if a row was updated in the transaction, and [false] otherwise
-     */
     private fun update(id: String, body: PrintJobs.(UpdateStatement) -> Unit): Boolean = transaction {
-        val result = PrintJobs.update({ PrintJobs.id eq id }, 1, body)
-        result == 1
+        PrintJobs.update(id, body)
     }
 
     override fun print(jobName: String,
@@ -146,7 +139,7 @@ object Printer : PrinterContract, WithLogging() {
                     val colourPageCount = if (psMonochrome) 0 else psInfo.colourPages
                     log.trace("Job $id has ${psInfo.pages} pages, $colourPageCount in color")
 
-                    //update page count and status in db
+                    //update page count and stage in db
                     processed(pageCount, colourPageCount)
 
                     val destination = QueueManager.getDestination(queueName, pageCount)
