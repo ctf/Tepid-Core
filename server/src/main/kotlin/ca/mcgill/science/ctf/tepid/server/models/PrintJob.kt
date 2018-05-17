@@ -1,5 +1,6 @@
 package ca.mcgill.science.ctf.tepid.server.models
 
+import ca.mcgill.science.ctf.tepid.server.Configs
 import ca.mcgill.science.ctf.tepid.server.tables.PrintJobs
 import ca.mcgill.science.ctf.tepid.server.utils.Printer
 import org.jetbrains.exposed.sql.select
@@ -29,7 +30,10 @@ data class PrintJob(
          */
         val shortUser: String,
         /**
-         * Processed postscript file
+         * Processed compressed postscript file
+         * Note that to print, the file must be decompressed.
+         * Decompression will be handled internally and sent through
+         * [PrintRequest.file]
          */
         val file: File) : PrintResponse() {
 
@@ -84,8 +88,27 @@ data class PrintError(
 
 /**
  * Contains all the necessary info to print an actual job
+ *
+ * [job] attributes for the print job
+ * [file] location of temp file to print
+ * [destination] unique identifier for destination to print to
+ * [pageCount] total page count
+ * [colourPageCount] page count for coloured pages
  */
-data class PrintRequest(val job: PrintJob, val destination: String, val pageCount: Int, val colourPageCount: Int)
+data class PrintRequest(val job: PrintJob,
+                        val file: File,
+                        val destination: String,
+                        val pageCount: Int,
+                        val colourPageCount: Int) {
+
+    /**
+     * The quota amount that will be deducted if this page prints
+     */
+    val quotaCost: Int
+        get() = (pageCount - colourPageCount) + colourPageCount * Configs.colourPageValue
+
+    fun hasSufficientQuota(quota: Int) = quotaCost < quota
+}
 
 /**
  * Stage info for a given print job

@@ -16,13 +16,14 @@ object Tepid : WithLogging(),
      * This must be called at least once before any other part of tepid is used
      *
      * Most arguments already have defaults, but the following must be provided:
-     * [Configs.dbConfigs]
+     * [Configs.dbConfigs], [Configs.baseQuota]
      *
      * See [Configs] for all attributes
      *
      */
     fun configure(action: Configs.() -> Unit) {
         Configs.action()
+        Configs.validate()
     }
 
 }

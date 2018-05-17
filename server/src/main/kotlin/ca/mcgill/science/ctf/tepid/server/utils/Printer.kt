@@ -8,6 +8,7 @@ import org.jetbrains.exposed.sql.statements.UpdateStatement
 import org.jetbrains.exposed.sql.transactions.transaction
 import org.jetbrains.exposed.sql.update
 import org.tukaani.xz.XZInputStream
+import org.tukaani.xz.XZOutputStream
 import java.io.*
 import java.util.concurrent.*
 
@@ -17,7 +18,7 @@ interface PrinterContract {
      * [jobName] job name for display
      * [shortUser] unique identifier for user who is printing
      * [queueName] unique identifier for the queue to use
-     * [stream] file contents
+     * [stream] file contents; should be compressed using [XZOutputStream] // todo make more obvious
      * [validate] optional predicate to ensure print candidate is valid; defaults to accept all candidates
      *
      * This method guarantees a row creation in [PrintJobs],
@@ -40,6 +41,16 @@ interface PrinterContract {
 
 object Printer : PrinterContract, WithLogging() {
 
+    /*
+     * Error constants
+     */
+
+    const val POSTSCRIPT_ERROR = "postscript_error"
+    const val INVALID_DESTINATION = "invalid_destination"
+    const val INSUFFICIENT_QUOTA = "insufficient_quota"
+    const val PRINT_FAILURE = "print_failure"
+    const val PROCESS_FAILURE = "process_failure"
+
     private inline val tmpDir: File
         get() = Configs.tmpDir
 
@@ -52,12 +63,6 @@ object Printer : PrinterContract, WithLogging() {
         val result = PrintJobs.update({ PrintJobs.id eq id }, 1, body)
         result == 1
     }
-
-    const val POSTSCRIPT_ERROR = "postscript_error"
-    const val INVALID_DESTINATION = "invalid_destination"
-    const val INSUFFICIENT_QUOTA = "insufficient_quota"
-    const val PRINT_FAILURE = "print_failure"
-    const val PROCESS_FAILURE = "process_failure"
 
     override fun print(jobName: String,
                        shortUser: String,
@@ -94,9 +99,10 @@ object Printer : PrinterContract, WithLogging() {
             it[this.colourPageCount] = colourPageCount
         }
 
-        fun printed(destination: String) = update(id) {
+        fun printed(destination: String, cost: Int) = update(id) {
             it[printed] = System.currentTimeMillis()
             it[this.destination] = destination
+            it[quotaCost] = cost
         }
 
         fun failed(message: String) {
@@ -132,7 +138,8 @@ object Printer : PrinterContract, WithLogging() {
                     val br = BufferedReader(FileReader(tmp.absolutePath))
                     val now = System.currentTimeMillis()
                     val psMonochrome = br.isMonochrome()
-                    log.trace("Detected ${if (psMonochrome) "monochrome" else "colour"} for job $id in ${System.currentTimeMillis() - now} ms")
+                    log.trace("Detected ${if (psMonochrome) "monochrome"
+                    else "colour"} for job $id in ${System.currentTimeMillis() - now} ms")
                     //count pages
                     val psInfo = Gs.psInfo(tmp) ?: throw PrintException(POSTSCRIPT_ERROR)
                     val pageCount = psInfo.pages
@@ -144,7 +151,7 @@ object Printer : PrinterContract, WithLogging() {
 
                     val destination = QueueManager.getDestination(queueName, pageCount)
                             ?: throw PrintException(INVALID_DESTINATION)
-                    val request = PrintRequest(job, destination, psInfo.pages, colourPageCount)
+                    val request = PrintRequest(job, tmp, destination, psInfo.pages, colourPageCount)
 
                     val validation = validate(request)
                     if (validation is Invalid)
@@ -152,7 +159,7 @@ object Printer : PrinterContract, WithLogging() {
 
                     if (!Configs.print(request)) throw PrintException(PRINT_FAILURE)
 
-                    printed(destination)
+                    printed(destination, request.quotaCost)
                 } catch (e: PrintException) {
                     log.error("Job $id failed: ${e.message}")
                     failed(e.message)

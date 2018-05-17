@@ -2,6 +2,9 @@ package ca.mcgill.science.ctf.tepid.server.internal
 
 import ca.mcgill.science.ctf.tepid.server.Tepid
 import ca.mcgill.science.ctf.tepid.server.models.DbConfigs
+import ca.mcgill.science.ctf.tepid.server.tables.PrintJobs
+import org.jetbrains.exposed.sql.SchemaUtils.drop
+import org.jetbrains.exposed.sql.transactions.transaction
 import java.util.concurrent.atomic.AtomicBoolean
 
 object Test {
@@ -23,6 +26,10 @@ object Test {
 
             }
         }
+    }
+
+    fun clear() = transaction {
+        drop(PrintJobs)
     }
 
 }

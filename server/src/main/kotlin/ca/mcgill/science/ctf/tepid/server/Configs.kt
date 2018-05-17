@@ -36,6 +36,12 @@ object Configs : WithLogging() {
     var expiration: Long = 1L * 24 * 60 * 60 * 100
 
     /**
+     * The amount of quota deducted for printing one page in colour
+     * By default, monochrome pages = 1 quota, colour pages = 3 quota
+     */
+    var colourPageValue: Int = 3
+
+    /**
      * Configurations used to connect to the database
      */
     var dbConfigs: DbConfigs? = null
@@ -47,9 +53,25 @@ object Configs : WithLogging() {
         }
 
     /**
+     * Function to get the base quota of a user
+     * This will be called from many threads
+     */
+    lateinit var baseQuota: (shortUser: String) -> Int
+
+    /**
      * Given a print job, execute the command to print
      * Return [true] if successful, and [false] otherwise
      * Defaults to just logging the request
      */
     var print: (job: PrintRequest) -> Boolean = { log.info("PrintImpl: $it"); true }
+
+    internal fun validate() {
+        dbConfigs ?: fail("DbConfigs not supplied")
+        if (!this::baseQuota.isInitialized) fail("BaseQuota function not initialized")
+    }
+
+    private fun fail(message: String): Nothing = throw ConfigException(message)
+
+    class ConfigException(override val message: String) : RuntimeException(message)
 }
+
