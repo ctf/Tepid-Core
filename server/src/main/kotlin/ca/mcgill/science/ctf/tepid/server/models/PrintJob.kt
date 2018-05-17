@@ -1,9 +1,19 @@
 package ca.mcgill.science.ctf.tepid.server.models
 
+import ca.mcgill.science.ctf.tepid.server.tables.PrintJobs
+import ca.mcgill.science.ctf.tepid.server.utils.Printer
+import org.jetbrains.exposed.sql.select
+import org.jetbrains.exposed.sql.transactions.transaction
 import java.io.File
 
+/**
+ * Return type for [Printer.print]
+ */
 sealed class PrintResponse
 
+/**
+ * Immutable structure containing print job attributes and db getters
+ */
 data class PrintJob(
         /**
          * Unique id for the job
@@ -15,18 +25,76 @@ data class PrintJob(
          */
         val name: String,
         /**
-         * Unique identifier for the destination
-         */
-        val destination: String,
-        /**
          * Unique identifier for the user who is printing
          */
         val shortUser: String,
         /**
          * Processed postscript file
          */
-        val file: File) : PrintResponse()
+        val file: File) : PrintResponse() {
+
+    /**
+     * Fetch the current print job status from the db
+     */
+    fun status(): PrintStage = transaction {
+        PrintJobs.select { PrintJobs.id eq id }.limit(1).firstOrNull()?.run {
+
+            // lazy retrievers
+            val failed: Long by lazy { this[PrintJobs.failed] }
+            val printed: Long by lazy { this[PrintJobs.printed] }
+            val received: Long by lazy { this[PrintJobs.received] }
+            val processed: Long by lazy { this[PrintJobs.processed] }
+            val created: Long by lazy { this[PrintJobs.created] }
+
+            // valid if processed or printed
+            val destination: String by lazy { this[PrintJobs.destination]!! }
+            // valid if failed
+            val error: String by lazy { this[PrintJobs.error]!! }
+
+            val pageCount: Int by lazy { this[PrintJobs.pageCount] }
+            val colourPageCount: Int by lazy { this[PrintJobs.colourPageCount] }
+
+            val fileSize: Long by lazy {
+                try {
+                    val file = File(this[PrintJobs.file])
+                    if (file.isFile)
+                        file.length()
+                    else
+                        0L
+                } catch (e: Exception) {
+                    0L
+                }
+            }
+
+            when {
+                failed != -1L -> Failed(failed, error)
+                printed != -1L -> Printed(printed, destination, pageCount, colourPageCount)
+                received != -1L -> Received(received, fileSize)
+                processed != -1L -> Processed(processed)
+                else -> Created(created)
+            }
+        } ?: Deleted
+    }
+
+}
 
 data class PrintError(
         val message: String,
-        val timeStamp: Long = System.currentTimeMillis()):PrintResponse()
+        val timeStamp: Long = System.currentTimeMillis()) : PrintResponse()
+
+/**
+ * Contains all the necessary info to print an actual job
+ */
+data class PrintRequest(val job: PrintJob, val destination: String, val pageCount: Int, val colourPageCount: Int)
+
+/**
+ * Stage info for a given print job
+ */
+sealed class PrintStage
+
+data class Created(val time: Long) : PrintStage()
+data class Processed(val time: Long) : PrintStage()
+data class Received(val time: Long, val fileSize: Long) : PrintStage()
+data class Printed(val time: Long, val destination: String, val pageCount: Int, val colourPageCount: Int) : PrintStage()
+data class Failed(val time: Long, val message: String) : PrintStage()
+object Deleted : PrintStage()

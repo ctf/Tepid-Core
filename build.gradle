@@ -30,6 +30,7 @@ subprojects {
         compile "org.jetbrains.kotlin:kotlin-stdlib-jdk8:$KOTLIN"
         compile "ca.allanwang.kit:logger:$KIT"
         compile "ca.allanwang.kit:utils:$KIT"
+        testCompile "org.jetbrains.kotlin:kotlin-test-junit:$KOTLIN"
         testCompile group: 'junit', name: 'junit', version: '4.12'
     }
 

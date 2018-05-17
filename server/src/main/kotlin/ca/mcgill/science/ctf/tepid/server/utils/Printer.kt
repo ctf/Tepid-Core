@@ -3,50 +3,116 @@ package ca.mcgill.science.ctf.tepid.server.utils
 import ca.allanwang.kit.logger.WithLogging
 import ca.mcgill.science.ctf.tepid.server.Configs
 import ca.mcgill.science.ctf.tepid.server.models.*
+import ca.mcgill.science.ctf.tepid.server.tables.PrintJobs
+import org.jetbrains.exposed.sql.statements.UpdateStatement
+import org.jetbrains.exposed.sql.transactions.transaction
+import org.jetbrains.exposed.sql.update
+import org.tukaani.xz.XZInputStream
 import java.io.*
 import java.util.concurrent.*
 
 interface PrinterContract {
     /**
-     * Validates a job request and produces the job entity or an error
-     * [jobName] display name for the request
+     * Submits a request to print the provided job
+     * [jobName] job name for display
+     * [shortUser] unique identifier for user who is printing
+     * [queueName] unique identifier for the queue to use
+     * [stream] file contents
+     * [validate] optional predicate to ensure print candidate is valid; defaults to accept all candidates
      *
+     * This method guarantees a row creation in [PrintJobs],
+     * and will pass the job through a series of stages, resulting in either
+     * [Printed] or [Failed]
+     *
+     * Returns a [PrintJob] is the stream is received properly,
+     * and an [PrintError] otherwise.
+     *
+     * Note that receiving a [PrintJob] does not necessarily mean that the job will print,
+     * as the actual processing is handled asynchronously on another thread.
+     * If everything goes through, a print request will be sent to [Configs.print]
      */
     fun print(jobName: String,
               shortUser: String,
-              colourEnabled: Boolean,
-              quota: Int,
-              stream: InputStream): PrintResponse
+              queueName: String,
+              stream: InputStream,
+              validate: (candidate: PrintRequest) -> Validation = { Valid }): PrintResponse
 }
 
 object Printer : PrinterContract, WithLogging() {
 
-    private inline val tmpDir:File
-            get() = Configs.tmpDir
+    private inline val tmpDir: File
+        get() = Configs.tmpDir
+
+    /**
+     * Helper function to update the print job of the given [id]
+     *
+     * Returns [true] if a row was updated in the transaction, and [false] otherwise
+     */
+    private fun update(id: String, body: PrintJobs.(UpdateStatement) -> Unit): Boolean = transaction {
+        val result = PrintJobs.update({ PrintJobs.id eq id }, 1, body)
+        result == 1
+    }
+
+    const val POSTSCRIPT_ERROR = "postscript_error"
+    const val INVALID_DESTINATION = "invalid_destination"
+    const val INSUFFICIENT_QUOTA = "insufficient_quota"
+    const val PRINT_FAILURE = "print_failure"
+    const val PROCESS_FAILURE = "process_failure"
 
     override fun print(jobName: String,
-              shortUser: String,
-              colourEnabled: Boolean,
-              quota: Int,
-              stream: InputStream): PrintResponse {
-        val id = Configs.generateId()
-        log.debug("Receiving job data $id")
+                       shortUser: String,
+                       queueName: String,
+                       stream: InputStream,
+                       validate: (candidate: PrintRequest) -> Validation): PrintResponse {
+
         if (!tmpDir.exists() && !tmpDir.mkdirs()) {
             log.error("Failed to create tmp path ${tmpDir.absolutePath}")
             return PrintError("Failed to create tmp path")
         }
 
+        /*
+         * Initialize
+         */
+
+        val id = Configs.generateId()
+        log.debug("Printing job data $id")
+        val tmpXz = File("${tmpDir.absolutePath}/$id.ps.xz")
+        val job = PrintJob(id, shortUser, jobName, tmpXz)
+        PrintJobs.create(job)
+
+        /*
+         * Helper methods
+         */
+
+        fun received() = update(id) {
+            it[received] = System.currentTimeMillis()
+        }
+
+        fun processed(pageCount: Int, colourPageCount: Int) = update(id) {
+            it[processed] = System.currentTimeMillis()
+            it[this.pageCount] = pageCount
+            it[this.colourPageCount] = colourPageCount
+        }
+
+        fun printed(destination: String) = update(id) {
+            it[printed] = System.currentTimeMillis()
+            it[this.destination] = destination
+        }
+
+        fun failed(message: String) {
+            update(id) {
+                it[failed] = System.currentTimeMillis()
+                it[error] = message
+            }
+            cancel(id)
+        }
+
         try {
             // todo test and validate
             //write compressed job to disk
-            val tmpXz = File("${tmpDir.absolutePath}/$id.ps.xz")
             tmpXz.copyFrom(stream)
             //let db know we have received data
-            CouchDb.updateWithResponse<PrintJob>(id) {
-                file = tmpXz.absolutePath
-                log.info("Updating job $id with path $file")
-                received = System.currentTimeMillis()
-            }
+            received()
 
             submit(id) {
 
@@ -68,56 +134,45 @@ object Printer : PrinterContract, WithLogging() {
                     val psMonochrome = br.isMonochrome()
                     log.trace("Detected ${if (psMonochrome) "monochrome" else "colour"} for job $id in ${System.currentTimeMillis() - now} ms")
                     //count pages
-                    val psInfo = Gs.psInfo(tmp) ?: throw PrintException("Internal Error")
-                    val color = if (psMonochrome) 0 else psInfo.colourPages
-                    log.trace("Job $id has ${psInfo.pages} pages, $color in color")
+                    val psInfo = Gs.psInfo(tmp) ?: throw PrintException(POSTSCRIPT_ERROR)
+                    val pageCount = psInfo.pages
+                    val colourPageCount = if (psMonochrome) 0 else psInfo.colourPages
+                    log.trace("Job $id has ${psInfo.pages} pages, $colourPageCount in color")
 
                     //update page count and status in db
-                    var j2: PrintJob = CouchDb.update(id) {
-                        pages = psInfo.pages
-                        colorPages = color
-                        processed = System.currentTimeMillis()
-                    } ?: throw PrintException("Could not update")
+                    processed(pageCount, colourPageCount)
 
-                    //check if user has color printing enabled
-                    if (color > 0 && SessionManager.queryUser(j2.userIdentification, null)?.colorPrinting != true)
-                        throw PrintException(PrintError.COLOR_DISABLED)
+                    val destination = QueueManager.getDestination(queueName, pageCount)
+                            ?: throw PrintException(INVALID_DESTINATION)
+                    val request = PrintRequest(job, destination, psInfo.pages, colourPageCount)
 
-                    //check if user has sufficient quota to print this job
-                    if (Users.getQuota(j2.userIdentification) < psInfo.pages + color * 2)
-                        throw PrintException(PrintError.INSUFFICIENT_QUOTA)
+                    val validation = validate(request)
+                    if (validation is Invalid)
+                        throw PrintException(validation.message)
 
-                    //add job to the queue
-                    j2 = QueueManager.assignDestination(id)
-                    //todo check destination field
-                    val destination = j2.destination ?: throw PrintException(PrintError.INVALID_DESTINATION)
+                    if (!Configs.print(request)) throw PrintException(PRINT_FAILURE)
 
-                    val dest = CouchDb.path(destination).getJson<FullDestination>()
-                    if (sendToSMB(tmp, dest, debug)) {
-                        j2.printed = System.currentTimeMillis()
-                        CouchDb.path(id).putJson(j2)
-                        log.info("${j2._id} sent to destination")
-                    } else {
-                        throw PrintException("Could not send to destination")
-                    }
+                    printed(destination)
+                } catch (e: PrintException) {
+                    log.error("Job $id failed: ${e.message}")
+                    failed(e.message)
                 } catch (e: Exception) {
                     log.error("Job $id failed", e)
-                    val msg = (e as? PrintException)?.message ?: "Failed to process"
-                    failJob(id, msg)
+                    failed(e::class.java.simpleName)
                 } finally {
                     tmp.delete()
                 }
             }
-            return true to "Successfully created request $id"
+            return job
         } catch (e: Exception) {
             // todo check if this is necessary, given that the submit code is handled separately
             log.error("Job $id failed", e)
-            failJob(id, "Failed to process")
-            return false to "Failed to process"
+            failed("Failed to process")
+            return PrintError(PROCESS_FAILURE)
         }
     }
 
-    class PrintException(message: String) : RuntimeException(message)
+    class PrintException(override val message: String) : RuntimeException(message)
 
     private val executor: ExecutorService = ThreadPoolExecutor(5, 30, 10, TimeUnit.MINUTES,
             ArrayBlockingQueue<Runnable>(300, true))

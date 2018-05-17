@@ -3,7 +3,7 @@ package ca.mcgill.science.ctf.tepid.server
 import ca.allanwang.kit.logger.WithLogging
 import ca.allanwang.kit.utils.os
 import ca.mcgill.science.ctf.tepid.server.models.DbConfigs
-import ca.mcgill.science.ctf.tepid.server.models.PrintJob
+import ca.mcgill.science.ctf.tepid.server.models.PrintRequest
 import ca.mcgill.science.ctf.tepid.server.models.connect
 import ca.mcgill.science.ctf.tepid.server.utils.Utils
 import java.io.File
@@ -51,5 +51,5 @@ object Configs : WithLogging() {
      * Return [true] if successful, and [false] otherwise
      * Defaults to just logging the request
      */
-    var print: (job: PrintJob) -> Boolean = { log.info("PrintImpl: $it"); true }
+    var print: (job: PrintRequest) -> Boolean = { log.info("PrintImpl: $it"); true }
 }

@@ -1,4 +1,4 @@
 dependencies {
-    compile "org.postgresql:postgresql:$POSTGRESQL"
-    compile "com.github.AllanWang:Exposed:$EXPOSED"
+    implementation "com.github.AllanWang:Exposed:$EXPOSED"
+    implementation "org.tukaani:xz:1.6"
 }
