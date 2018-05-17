@@ -1,0 +1,28 @@
+priv.properties
+src/main/java/shared/Config.kt
+
+.idea/
+
+.directory
+
+.metadata
+.gradle
+bin/
+*.tmp
+*.iml
+*.bak
+*.swp
+*~.nib
+local.properties
+.settings/
+.project
+.classpath
+.loadpath
+build/
+out/
+
+# TeXlipse plugin
+.texlipse
+
+# Temp files for KDE and other Editor's 
+*~
