@@ -32,6 +32,7 @@ subprojects {
         compile "ca.allanwang.kit:utils:$KIT"
         testCompile "org.jetbrains.kotlin:kotlin-test-junit:$KOTLIN"
         testCompile group: 'junit', name: 'junit', version: JUNIT
+        testCompile group: 'com.h2database', name: 'h2', version: '1.4.197'
     }
 
     compileKotlin {

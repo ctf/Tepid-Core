@@ -1,14 +1,13 @@
 package ca.mcgill.science.ctf.tepid.server.tables
 
+import ca.allanwang.kit.rx.RxWatcher
 import ca.mcgill.science.ctf.tepid.server.Configs
 import ca.mcgill.science.ctf.tepid.server.models.*
 import ca.mcgill.science.ctf.tepid.server.utils.Printer
-import io.reactivex.Observable
 import org.jetbrains.exposed.sql.*
 import org.jetbrains.exposed.sql.statements.UpdateStatement
 import org.jetbrains.exposed.sql.transactions.transaction
 import java.io.File
-import java.util.concurrent.ConcurrentHashMap
 
 object PrintJobs : Table() {
     val id = varchar("id", 128).primaryKey()
@@ -68,7 +67,7 @@ object PrintJobs : Table() {
     }
 
     private fun get(id: String): ResultRow? =
-            select { PrintJobs.id eq PrintJobs.id }.firstOrNull()
+            select { PrintJobs.id eq id }.firstOrNull()
 
     /**
      * Gets the total quota cost used by the short user
@@ -130,4 +129,17 @@ object PrintJobs : Table() {
         } ?: NotFound
     }
 
+    private val watcher = PrintStageWatcher()
+
+    fun watch(id: String) = watcher.watch(id)
+
+}
+
+class PrintStageWatcher : RxWatcher<String, PrintStage>() {
+    override val pollingInterval: Long = 1000L
+    override val timeoutDuration: Long = 120000L
+
+    override fun emit(id: String): PrintStage = PrintJobs.stage(id)
+
+    override fun isCompleted(id: String, value: PrintStage): Boolean = value.finished
 }

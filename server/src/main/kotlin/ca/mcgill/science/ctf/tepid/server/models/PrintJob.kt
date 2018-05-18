@@ -74,12 +74,13 @@ data class PrintRequest(val job: PrintJob,
 
 /**
  * Stage info for a given print job
+ * [finished] means that the stage will no longer change
  */
-sealed class PrintStage
+sealed class PrintStage(val finished: Boolean)
 
-data class Created(val time: Long) : PrintStage()
-data class Processed(val time: Long) : PrintStage()
-data class Received(val time: Long, val fileSize: Long) : PrintStage()
-data class Printed(val time: Long, val destination: String, val pageCount: Int, val colourPageCount: Int) : PrintStage()
-data class Failed(val time: Long, val message: String) : PrintStage()
-object NotFound : PrintStage()
+data class Created(val time: Long) : PrintStage(false)
+data class Processed(val time: Long) : PrintStage(false)
+data class Received(val time: Long, val fileSize: Long) : PrintStage(false)
+data class Printed(val time: Long, val destination: String, val pageCount: Int, val colourPageCount: Int) : PrintStage(true)
+data class Failed(val time: Long, val message: String) : PrintStage(true)
+object NotFound : PrintStage(true)
