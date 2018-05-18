@@ -23,3 +23,6 @@ fun File.copyFrom(input: InputStream,
         Files.copy(it, toPath(), *options)
     }
 }
+
+// Exception from which all other tepid exceptions inherit
+open class TepidException(override val message: String) : RuntimeException(message)

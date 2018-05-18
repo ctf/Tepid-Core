@@ -172,7 +172,7 @@ object Printer : PrinterContract, WithLogging() {
         }
     }
 
-    class PrintException(override val message: String) : RuntimeException(message)
+    class PrintException(message: String) : TepidException(message)
 
     private val executor: ExecutorService = ThreadPoolExecutor(5, 30, 10, TimeUnit.MINUTES,
             ArrayBlockingQueue<Runnable>(300, true))

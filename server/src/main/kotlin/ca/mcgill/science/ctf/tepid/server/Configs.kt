@@ -5,6 +5,8 @@ import ca.allanwang.kit.utils.os
 import ca.mcgill.science.ctf.tepid.server.models.DbConfigs
 import ca.mcgill.science.ctf.tepid.server.models.PrintRequest
 import ca.mcgill.science.ctf.tepid.server.models.connect
+import ca.mcgill.science.ctf.tepid.server.utils.LoadBalancer
+import ca.mcgill.science.ctf.tepid.server.utils.TepidException
 import ca.mcgill.science.ctf.tepid.server.utils.Utils
 import java.io.File
 import java.math.BigInteger
@@ -30,6 +32,11 @@ object Configs : WithLogging() {
             linux = "/tmp/tepid").value)
 
     /**
+     * Given an identifier, create a load balancer
+     */
+    var loadBalancer: (key: String) -> LoadBalancer? = { TODO("Add interfaces") }
+
+    /**
      * Time in ms to keep postscript files
      * Defaults to 1 day
      */
@@ -48,7 +55,7 @@ object Configs : WithLogging() {
         set(value) {
             field = value
             if (value == null)
-                throw RuntimeException("DbConfigs cannot be null")
+                fail("DbConfigs cannot be null")
             value.connect()
         }
 
@@ -72,6 +79,6 @@ object Configs : WithLogging() {
 
     private fun fail(message: String): Nothing = throw ConfigException(message)
 
-    class ConfigException(override val message: String) : RuntimeException(message)
+    class ConfigException(message: String) : TepidException(message)
 }
 
