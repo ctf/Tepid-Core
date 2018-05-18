@@ -66,7 +66,7 @@ object PrintJobs : Table() {
         }
     }
 
-    private fun get(id: String): ResultRow? =
+    operator fun get(id: String): ResultRow? =
             select { PrintJobs.id eq id }.firstOrNull()
 
     /**
@@ -84,6 +84,9 @@ object PrintJobs : Table() {
      */
     fun update(id: String, action: PrintJobs.(UpdateStatement) -> Unit): Boolean =
             update({ PrintJobs.id eq id }, 1, action) == 1
+
+    fun update(job: PrintJob, action: PrintJobs.(UpdateStatement) -> Unit): Boolean =
+            update(job.id, action)
 
     /**
      * Receives the print stage for the supplied job
