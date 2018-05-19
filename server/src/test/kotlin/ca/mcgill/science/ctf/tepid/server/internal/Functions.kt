@@ -37,3 +37,5 @@ fun PrintJobs.testCreate(id: String, shortUser: String = testUser): PrintJob {
     PrintJobs.create(job, File("tepid-${job.id}.ps"))
     return job
 }
+
+fun resource(path: String) = File(TestConfigs::class.java.classLoader.getResource(path).file)
