@@ -1,0 +1,59 @@
+buildscript {
+    repositories {
+        mavenCentral()
+    }
+    dependencies {
+        classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$KOTLIN"
+    }
+}
+
+plugins {
+    id 'java'
+}
+
+subprojects {
+    group 'ca.mcgill.science.ctf.tepid'
+    version VERSION
+
+    apply plugin: 'java'
+    apply plugin: 'kotlin'
+    apply plugin: 'maven'
+
+    sourceCompatibility = JVM
+
+    repositories {
+        mavenCentral()
+        maven { url "https://jitpack.io" }
+    }
+
+    dependencies {
+        compile "org.jetbrains.kotlin:kotlin-stdlib-jdk8:$KOTLIN"
+        compile "ca.allanwang.kit:logger:$KIT"
+        compile "ca.allanwang.kit:utils:$KIT"
+        testCompile "org.jetbrains.kotlin:kotlin-test-junit:$KOTLIN"
+        testCompile group: 'junit', name: 'junit', version: JUNIT
+        testCompile group: 'com.h2database', name: 'h2', version: '1.4.197'
+    }
+
+    compileKotlin {
+        kotlinOptions.jvmTarget = JVM
+    }
+    compileTestKotlin {
+        kotlinOptions.jvmTarget = JVM
+    }
+
+    task sourcesJar(type: Jar, dependsOn: classes) {
+        classifier = 'sources'
+        from sourceSets.main.allSource
+    }
+
+    task javadocJar(type: Jar, dependsOn: javadoc) {
+        classifier = 'javadoc'
+        from javadoc.destinationDir
+    }
+
+    artifacts {
+        archives sourcesJar
+        archives javadocJar
+    }
+}

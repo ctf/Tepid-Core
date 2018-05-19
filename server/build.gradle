@@ -1,0 +1,8 @@
+dependencies {
+    implementation "com.github.AllanWang:Exposed:$EXPOSED"
+    implementation "org.tukaani:xz:1.6"
+    implementation "ca.allanwang.kit:rx:$KIT"
+
+    testImplementation "org.slf4j:slf4j-nop:$SLF4J"
+
+}
