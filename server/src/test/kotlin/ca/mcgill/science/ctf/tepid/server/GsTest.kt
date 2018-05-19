@@ -2,6 +2,7 @@ package ca.mcgill.science.ctf.tepid.server
 
 import ca.allanwang.kit.logger.WithLogging
 import ca.mcgill.science.ctf.tepid.server.internal.resource
+import ca.mcgill.science.ctf.tepid.server.internal.testPs
 import ca.mcgill.science.ctf.tepid.server.utils.Gs
 import ca.mcgill.science.ctf.tepid.server.utils.PsData
 import org.junit.Assume
@@ -32,13 +33,13 @@ class GsTest {
      */
     @Test
     fun inkCov() {
-        val coverage = Gs.inkCoverage(resource("gs/test.ps")) ?: fail("Could not get ink cov")
-        log.info("test.ps: \n${coverage.joinToString("\n\t")}")
+        val coverage = Gs.inkCoverage(testPs) ?: fail("Could not get ink cov")
+        log.info("${testPs.name}: \n${coverage.joinToString("\n\t")}")
         assertEquals(2, coverage.size, "Could not get ink cov for both pages")
         assertFalse(coverage[0].monochrome, "First page should be colour")
         assertTrue(coverage[1].monochrome, "Second page should be monochrome")
         val data = Gs.coverageToInfo(coverage)
-        log.info("test.ps data: $data")
+        log.info("${testPs.name} data: $data")
         assertEquals(2, data.pages, "Should have two pages total")
         assertEquals(1, data.colourPages, "Should have one colour page")
     }
@@ -65,7 +66,7 @@ class GsTest {
      */
     @Test
     fun extraTests() {
-        val gsDir = resource("gs/extras")
+        val gsDir = resource("ps/extras")
         if (!gsDir.isDirectory) {
             log.info("Skipping gs test; no files found")
             return

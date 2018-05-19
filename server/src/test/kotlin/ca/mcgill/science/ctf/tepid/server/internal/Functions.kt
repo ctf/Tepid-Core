@@ -39,3 +39,5 @@ fun PrintJobs.testCreate(id: String, shortUser: String = testUser): PrintJob {
 }
 
 fun resource(path: String) = File(TestConfigs::class.java.classLoader.getResource(path).file)
+
+val testPs = resource("ps/test.ps")

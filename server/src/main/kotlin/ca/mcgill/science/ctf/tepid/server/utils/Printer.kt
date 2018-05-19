@@ -4,6 +4,8 @@ import ca.allanwang.kit.logger.WithLogging
 import ca.mcgill.science.ctf.tepid.server.Configs
 import ca.mcgill.science.ctf.tepid.server.models.*
 import ca.mcgill.science.ctf.tepid.server.tables.PrintJobs
+import org.tukaani.xz.LZMA2Options
+import org.tukaani.xz.XZFormatException
 import org.tukaani.xz.XZInputStream
 import org.tukaani.xz.XZOutputStream
 import java.io.*
@@ -34,6 +36,17 @@ interface PrinterContract {
               queueName: String,
               stream: InputStream,
               validate: Validator<PrintRequest> = Printer.hasSufficientQuota): PrintResponse
+
+    /**
+     * Wraps a supplied stream with the compression stream
+     */
+    fun compress(stream: OutputStream): OutputStream
+
+    /**
+     * Wraps the supplied file with the compression stream,
+     * or returns the original file stream as a fallback
+     */
+    fun decompress(file: File): InputStream
 }
 
 //typealias Validator = (candidate: PrintRequest) -> Validation
@@ -64,6 +77,14 @@ object Printer : PrinterContract, WithLogging() {
 
     private inline val tmpDir: File
         get() = Configs.tmpDir
+
+    override fun compress(stream: OutputStream): OutputStream = XZOutputStream(stream, LZMA2Options())
+
+    override fun decompress(file: File): InputStream = try {
+        file.inputStream().use(::XZInputStream)
+    } catch (e: XZFormatException) {
+        file.inputStream()
+    }
 
     override fun print(jobName: String,
                        shortUser: String,
@@ -121,8 +142,7 @@ object Printer : PrinterContract, WithLogging() {
                 val tmp = File.createTempFile("tepid", ".ps")
                 try {
                     //decompress data
-                    val decompress = XZInputStream(FileInputStream(tmpXz))
-                    tmp.copyFrom(decompress)
+                    tmp.copyFrom(decompress(tmpXz))
 
                     // Detect PostScript monochrome instruction
                     val br = BufferedReader(FileReader(tmp.absolutePath))
