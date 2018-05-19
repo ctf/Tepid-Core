@@ -3,9 +3,11 @@ package ca.mcgill.science.ctf.tepid.server
 import ca.allanwang.kit.logger.WithLogging
 import ca.mcgill.science.ctf.tepid.server.internal.resource
 import ca.mcgill.science.ctf.tepid.server.utils.Gs
+import ca.mcgill.science.ctf.tepid.server.utils.PsData
 import org.junit.Assume
 import org.junit.BeforeClass
 import org.junit.Test
+import java.io.File
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
@@ -41,4 +43,44 @@ class GsTest {
         assertEquals(1, data.colourPages, "Should have one colour page")
     }
 
+    /**
+     * [GsInfo] is provided if a file's name is of the format:
+     *
+     * [...]_[colour]_[pages].ps
+     *
+     * Pages is mandatory
+     */
+    private val File.gsInfo: PsData?
+        get() {
+            val parts = nameWithoutExtension.split("_")
+            if (parts.size < 3) return null
+            val pages = parts[parts.size - 1].toIntOrNull() ?: return null
+            val colour = parts[parts.size - 2].toIntOrNull() ?: 0
+            return PsData(pages, colour)
+        }
+
+    /**
+     * Used to test extra ps files
+     * gs/extras is gitignored
+     */
+    @Test
+    fun extraTests() {
+        val gsDir = resource("gs/extras")
+        if (!gsDir.isDirectory) {
+            log.info("Skipping gs test; no files found")
+            return
+        }
+
+        gsDir.listFiles { _, name -> name.endsWith(".ps") }.forEach {
+            val lines = Gs.gs(it) ?: fail("Failed to get gs info for ${it.absolutePath}")
+            println()
+            log.info("Tested ${it.name}")
+            val coverage = Gs.inkCoverage(lines)
+            log.info("Coverage:\n${coverage.joinToString("\n\t")}")
+            val psInfo = Gs.coverageToInfo(coverage)
+            val fileInfo = it.gsInfo ?: return@forEach log.info("Resulting info: $psInfo")
+            assertEquals(fileInfo, psInfo, "GS info mismatch for ${it.absolutePath}")
+            log.info("Matches supplied info: $fileInfo")
+        }
+    }
 }
