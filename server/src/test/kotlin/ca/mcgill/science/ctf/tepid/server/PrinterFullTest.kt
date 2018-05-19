@@ -2,15 +2,11 @@ package ca.mcgill.science.ctf.tepid.server
 
 import ca.allanwang.kit.logger.WithLogging
 import ca.mcgill.science.ctf.tepid.server.internal.*
-import ca.mcgill.science.ctf.tepid.server.models.PrintJob
-import ca.mcgill.science.ctf.tepid.server.models.PrintRequest
-import ca.mcgill.science.ctf.tepid.server.models.Valid
-import ca.mcgill.science.ctf.tepid.server.models.validate
+import ca.mcgill.science.ctf.tepid.server.models.*
 import ca.mcgill.science.ctf.tepid.server.tables.Destinations
 import ca.mcgill.science.ctf.tepid.server.tables.PrintJobs
 import ca.mcgill.science.ctf.tepid.server.tables.Queues
 import ca.mcgill.science.ctf.tepid.server.utils.Printer
-import org.jetbrains.exposed.sql.Transaction
 import org.jetbrains.exposed.sql.batchInsert
 import org.jetbrains.exposed.sql.insert
 import org.jetbrains.exposed.sql.selectAll
@@ -18,7 +14,6 @@ import org.jetbrains.exposed.sql.transactions.transaction
 import org.junit.AfterClass
 import org.junit.BeforeClass
 import org.junit.Test
-import kotlin.test.assertTrue
 import kotlin.test.fail
 
 /**
@@ -53,14 +48,19 @@ class PrinterFullTest {
         val destinations = (0..5).map { "destination$it" }
         val upDestinations = (0..5 step 2).map { "destination$it" }
 
-        private fun PrintRequest.validate() {
-            assertTrue(destination in upDestinations, "Destination is not valid")
-            assertTrue(pageCount > 0, "Page count not updated")
-            assertTrue(pageCount >= colourPageCount, "Page count less than colour page count")
-            assertTrue(file.isFile, "File was not created")
+        private val testValidator: Validator<PrintRequest> = {
+            with(it) {
+                when {
+                    destination !in upDestinations -> Invalid("Destination $destination not valid")
+                    pageCount == 0 -> Invalid("Page count not updated")
+                    pageCount < colourPageCount -> Invalid("Page count less than colour page count")
+                    !file.isFile -> Invalid("File was not created")
+                    else -> Valid
+                }
+            }
         }
 
-        private val validator = validate<PrintRequest>(Printer.hasSufficientQuota, { it.validate(); Valid })
+        private val validator = validate(Printer.hasSufficientQuota, testValidator)
 
         @AfterClass
         @JvmStatic
