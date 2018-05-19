@@ -153,7 +153,7 @@ object Printer : PrinterContract, WithLogging() {
                     log.trace("Detected ${if (psMonochrome) "monochrome"
                     else "colour"} for job $id in ${System.currentTimeMillis() - now} ms")
                     //count pages
-                    val psInfo = Gs.psInfo(tmp) ?: throw PrintException(POSTSCRIPT_ERROR)
+                    val psInfo = Configs.psInfo(tmp) ?: throw PrintException(POSTSCRIPT_ERROR)
                     val pageCount = psInfo.pages
                     val colourPageCount = if (psMonochrome) 0 else psInfo.colourPages
                     log.trace("Job $id has ${psInfo.pages} pages, $colourPageCount in color")

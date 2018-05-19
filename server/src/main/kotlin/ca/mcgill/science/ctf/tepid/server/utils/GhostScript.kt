@@ -4,26 +4,12 @@ import ca.allanwang.kit.logger.WithLogging
 import java.io.File
 import java.io.IOException
 
-interface GsContract {
-    /**
-     * Given a postscript file, output the ink coverage for each page
-     * Returns null if the process fails to launch
-     * If the process does launch, then any output not matching our expected format
-     * will be ignored
-     */
-    fun inkCoverage(f: File): List<InkCoverage>?
+object GhostScript : WithLogging() {
 
     /**
-     * Given a postscript file, output the info for the entire file
-     * Returns null if the process fails to launch
+     * Device used to collect ink coverage
      */
-    fun psInfo(f: File): PsData?
-}
-
-/**
- * Underlying delegate that exposes methods for unit testing
- */
-object Gs : WithLogging(), GsContract {
+    var device: String = "inkcov"
 
     private val gsBin = if (System.getProperty("os.name").startsWith("Windows"))
         "C:/Program Files/gs/gs9.20/bin/gswin64c.exe" else "gs"
@@ -63,7 +49,7 @@ object Gs : WithLogging(), GsContract {
         if (!f.isFile) return null
         val gsProcess = run("-sOutputFile=%stdout%",
                 "-dBATCH", "-dNOPAUSE", "-dQUIET", "-q",
-                "-sDEVICE=inkcov", f.absolutePath) ?: return null
+                "-sDEVICE=$device", f.absolutePath) ?: return null
         return gsProcess.inputStream.bufferedReader().useLines { it.toList() }
     }
 
@@ -87,11 +73,21 @@ object Gs : WithLogging(), GsContract {
                 InkCoverage(c.toFloat(), y.toFloat(), m.toFloat(), k.toFloat())
             }.toList()
 
-    override fun inkCoverage(f: File): List<InkCoverage>? {
+    /**
+     * Given a postscript file, output the ink coverage for each page
+     * Returns null if the process fails to launch
+     * If the process does launch, then any output not matching our expected format
+     * will be ignored
+     */
+    fun inkCoverage(f: File): List<InkCoverage>? {
         return inkCoverage(gs(f) ?: return null)
     }
 
-    override fun psInfo(f: File): PsData? {
+    /**
+     * Given a postscript file, output the info for the entire file
+     * Returns null if the process fails to launch
+     */
+    fun psInfo(f: File): PsData? {
         val coverage = inkCoverage(f) ?: return null
         return coverageToInfo(coverage)
     }

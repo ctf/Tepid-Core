@@ -3,7 +3,7 @@ package ca.mcgill.science.ctf.tepid.server
 import ca.allanwang.kit.logger.WithLogging
 import ca.mcgill.science.ctf.tepid.server.internal.resource
 import ca.mcgill.science.ctf.tepid.server.internal.testPs
-import ca.mcgill.science.ctf.tepid.server.utils.Gs
+import ca.mcgill.science.ctf.tepid.server.utils.GhostScript
 import ca.mcgill.science.ctf.tepid.server.utils.PsData
 import org.junit.Assume
 import org.junit.BeforeClass
@@ -14,13 +14,14 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import kotlin.test.fail
 
-class GsTest {
+class GhostScriptTest {
 
     companion object : WithLogging() {
+        
         @BeforeClass
         @JvmStatic
         fun check() {
-            val version = Gs.version()
+            val version = GhostScript.version()
             Assume.assumeTrue("Gs may not be installed", version != null)
             log.info("Version $version")
         }
@@ -33,12 +34,12 @@ class GsTest {
      */
     @Test
     fun inkCov() {
-        val coverage = Gs.inkCoverage(testPs) ?: fail("Could not get ink cov")
+        val coverage = GhostScript.inkCoverage(testPs) ?: fail("Could not get ink cov")
         log.info("${testPs.name}: ${coverage.joinToString("\n\t", prefix = "\n\t")}")
         assertEquals(2, coverage.size, "Could not get ink cov for both pages")
         assertFalse(coverage[0].monochrome, "First page should be colour")
         assertTrue(coverage[1].monochrome, "Second page should be monochrome")
-        val data = Gs.coverageToInfo(coverage)
+        val data = GhostScript.coverageToInfo(coverage)
         log.info("${testPs.name} data: $data")
         assertEquals(2, data.pages, "Should have two pages total")
         assertEquals(1, data.colourPages, "Should have one colour page")
@@ -73,12 +74,12 @@ class GsTest {
         }
 
         gsDir.listFiles { _, name -> name.endsWith(".ps") }.forEach {
-            val lines = Gs.gs(it) ?: fail("Failed to get gs info for ${it.absolutePath}")
+            val lines = GhostScript.gs(it) ?: fail("Failed to get gs info for ${it.absolutePath}")
             println()
             log.info("Tested ${it.name}")
-            val coverage = Gs.inkCoverage(lines)
+            val coverage = GhostScript.inkCoverage(lines)
             log.info("Coverage:${coverage.joinToString("\n\t", prefix = "\n\t")}")
-            val psInfo = Gs.coverageToInfo(coverage)
+            val psInfo = GhostScript.coverageToInfo(coverage)
             val fileInfo = it.gsInfo ?: return@forEach log.info("Resulting info: $psInfo")
             assertEquals(fileInfo, psInfo, "GS info mismatch for ${it.absolutePath}")
             log.info("Matches supplied info: $fileInfo")

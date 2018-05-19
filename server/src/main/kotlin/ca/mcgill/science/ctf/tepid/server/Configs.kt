@@ -8,9 +8,7 @@ import ca.mcgill.science.ctf.tepid.server.models.DbConfigs
 import ca.mcgill.science.ctf.tepid.server.models.PrintRequest
 import ca.mcgill.science.ctf.tepid.server.models.connect
 import ca.mcgill.science.ctf.tepid.server.tables.PrintJobs
-import ca.mcgill.science.ctf.tepid.server.utils.LoadBalancer
-import ca.mcgill.science.ctf.tepid.server.utils.TepidException
-import ca.mcgill.science.ctf.tepid.server.utils.Utils
+import ca.mcgill.science.ctf.tepid.server.utils.*
 import java.io.File
 import java.math.BigInteger
 import java.util.concurrent.TimeUnit
@@ -103,6 +101,12 @@ object Configs : WithLogging() {
      * Defaults to just logging the request
      */
     var print: (job: PrintRequest) -> Boolean = { log.info("PrintImpl: $it"); true }
+
+    /**
+     * Used to extract info from post script files
+     * Defaults to using [GhostScript]
+     */
+    var psInfo: (f: File) -> PsData? = GhostScript::psInfo
 
     internal fun validate() {
         dbConfigs ?: fail("DbConfigs not supplied")
