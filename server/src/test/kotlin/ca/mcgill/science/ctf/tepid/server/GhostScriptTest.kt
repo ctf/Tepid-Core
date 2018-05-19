@@ -17,12 +17,12 @@ import kotlin.test.fail
 class GhostScriptTest {
 
     companion object : WithLogging() {
-        
+
         @BeforeClass
         @JvmStatic
         fun check() {
             val version = GhostScript.version()
-            Assume.assumeTrue("Gs may not be installed", version != null)
+            Assume.assumeTrue("GhostScript may not be installed", version != null)
             log.info("Version $version")
         }
     }

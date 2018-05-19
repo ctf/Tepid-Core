@@ -117,8 +117,6 @@ object PrintJobs : Table(), PrintJobsContract, Loggable by WithLogging("PrintJob
      */
     val refunded = bool("refunded").default(false)
 
-    val deleted = bool("deleted").default(false)
-
     /*
      * Time stamps
      */
@@ -128,6 +126,7 @@ object PrintJobs : Table(), PrintJobsContract, Loggable by WithLogging("PrintJob
     val processed = long("processed").default(-1)
     val printed = long("printed").default(-1)
     val failed = long("failed").default(-1)
+    val deleted = long("deleted").default(-1)
 
     /**
      * Print job error message
@@ -146,16 +145,17 @@ object PrintJobs : Table(), PrintJobsContract, Loggable by WithLogging("PrintJob
     }
 
     override fun purge(expiration: Long): Int {
-        val purgeTime = System.currentTimeMillis() - expiration
+        val now = System.currentTimeMillis()
+        val purgeTime = now - expiration
         val files = transaction {
-            select { (created lessEq purgeTime) and (deleted eq false) }.map {
+            select { (created lessEq purgeTime) and (deleted eq -1) }.map {
                 it[file]
             }
         }
         files.map(::File).filter(File::isFile).forEach { it.delete() }
         val updateCount = transaction {
-            update({ (created lessEq purgeTime) and (deleted eq false) }) {
-                it[deleted] = true
+            update({ (created lessEq purgeTime) and (deleted eq -1) }) {
+                it[deleted] = now
             }
         }
         if (updateCount != files.size)
