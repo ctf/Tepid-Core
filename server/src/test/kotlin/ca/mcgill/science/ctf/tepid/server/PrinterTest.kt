@@ -12,6 +12,7 @@ import org.junit.Test
 import java.io.File
 import java.util.concurrent.TimeUnit
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.test.fail
 
@@ -42,29 +43,16 @@ class PrinterTest : WithLogging() {
         }, "Test Print $id")
     }
 
-    /**
-     * Watch job on a separate thread, locked by the [callback]
-     */
-    private fun watch(id: String, callback: CompletableCallback) {
-        lateinit var stage: PrintStage
-        PrintJobs.watch(id).timeout(10, TimeUnit.SECONDS).subscribeOn(Schedulers.io()).subscribeBy(
-                onNext = {
-                    // given adequate sleep times, we should be capturing all stages properly
-                    when (it) {
-                        is Received -> assertTrue(stage is Created)
-                        is Processed -> assertTrue(stage is Received)
-                        is Printed -> assertTrue(stage is Processed)
-                    }
-                    log.info("Stage $it")
-                    stage = it
-                },
-                onComplete = {
-                    callback.onComplete()
-                },
-                onError = {
-                    callback.onError(it)
-                }
-        )
+    private fun watch(id: String, callback: CompletableCallback) = watch(id, callback) {
+        prev, current ->
+        // given adequate sleep times, we should be capturing all stages properly
+        when (current) {
+            is Created -> assertNull(prev)
+            is Received -> assertTrue(prev is Created)
+            is Processed -> assertTrue(prev is Received)
+            is Printed -> assertTrue(prev is Processed)
+        }
+        log.info("Stage $current")
     }
 
     @Test

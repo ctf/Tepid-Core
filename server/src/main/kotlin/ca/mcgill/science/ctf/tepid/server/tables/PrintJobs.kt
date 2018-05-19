@@ -20,10 +20,12 @@ interface PrintJobsContract {
     fun create(job: PrintJob, file: File)
 
     /**
-     * Remove all files past the [Configs.expiration]
+     * Remove all files older than [expiration] ms
+     * Defaults to [Configs.expiration]
      * Those that are purged will be flagged as [PrintJobs.deleted]
+     * Returns number of rows updated
      */
-    fun purge()
+    fun purge(expiration: Long = Configs.expiration): Int
 
     /**
      * Gets the result row associated with the id if it exists
@@ -143,15 +145,14 @@ object PrintJobs : Table(), PrintJobsContract, Loggable by WithLogging("PrintJob
         }
     }
 
-    override fun purge() {
-        val purgeTime = System.currentTimeMillis() - Configs.expiration
+    override fun purge(expiration: Long): Int {
+        val purgeTime = System.currentTimeMillis() - expiration
         val files = transaction {
             select { (created lessEq purgeTime) and (deleted eq false) }.map {
                 it[file]
             }
         }
         files.map(::File).filter(File::isFile).forEach { it.delete() }
-        log.info("Purged ${files.size} files")
         val updateCount = transaction {
             update({ (created lessEq purgeTime) and (deleted eq false) }) {
                 it[deleted] = true
@@ -159,6 +160,7 @@ object PrintJobs : Table(), PrintJobsContract, Loggable by WithLogging("PrintJob
         }
         if (updateCount != files.size)
             log.warn("Update count $updateCount does not match purge size ${files.size}")
+        return updateCount
     }
 
     override operator fun get(id: String): ResultRow? =

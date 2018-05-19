@@ -34,7 +34,7 @@ class GsTest {
     @Test
     fun inkCov() {
         val coverage = Gs.inkCoverage(testPs) ?: fail("Could not get ink cov")
-        log.info("${testPs.name}: \n${coverage.joinToString("\n\t")}")
+        log.info("${testPs.name}: ${coverage.joinToString("\n\t", prefix = "\n\t")}")
         assertEquals(2, coverage.size, "Could not get ink cov for both pages")
         assertFalse(coverage[0].monochrome, "First page should be colour")
         assertTrue(coverage[1].monochrome, "Second page should be monochrome")
@@ -77,7 +77,7 @@ class GsTest {
             println()
             log.info("Tested ${it.name}")
             val coverage = Gs.inkCoverage(lines)
-            log.info("Coverage:\n${coverage.joinToString("\n\t")}")
+            log.info("Coverage:${coverage.joinToString("\n\t", prefix = "\n\t")}")
             val psInfo = Gs.coverageToInfo(coverage)
             val fileInfo = it.gsInfo ?: return@forEach log.info("Resulting info: $psInfo")
             assertEquals(fileInfo, psInfo, "GS info mismatch for ${it.absolutePath}")

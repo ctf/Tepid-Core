@@ -42,6 +42,8 @@ interface PrinterContract {
      */
     fun compress(stream: OutputStream): OutputStream
 
+    fun compress(file: File): OutputStream = compress(file.outputStream())
+
     /**
      * Wraps the supplied file with the compression stream,
      * or returns the original file stream as a fallback

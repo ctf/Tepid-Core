@@ -4,6 +4,7 @@ import ca.mcgill.science.ctf.tepid.server.Tepid
 import ca.mcgill.science.ctf.tepid.server.models.DbConfigs
 import org.h2.jdbcx.JdbcDataSource
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicLong
 
 
 object TestConfigs {
