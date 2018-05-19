@@ -35,8 +35,10 @@ interface PrinterContract {
               shortUser: String,
               queueName: String,
               stream: InputStream,
-              validate: (candidate: PrintRequest) -> Validation = { Valid }): PrintResponse
+              validate: Validator<PrintRequest> = Printer.hasSufficientQuota): PrintResponse
 }
+
+//typealias Validator = (candidate: PrintRequest) -> Validation
 
 object Printer : PrinterContract, WithLogging() {
 
@@ -50,6 +52,18 @@ object Printer : PrinterContract, WithLogging() {
     const val PRINT_FAILURE = "print_failure"
     const val PROCESS_FAILURE = "process_failure"
 
+    /*
+     * Validators
+     */
+
+    /**
+     * Check if user has sufficient quota
+     */
+    val hasSufficientQuota: Validator<PrintRequest> = {
+        if (it.hasSufficientQuota()) Valid
+        else Invalid(Printer.INSUFFICIENT_QUOTA)
+    }
+
     private inline val tmpDir: File
         get() = Configs.tmpDir
 
@@ -61,7 +75,7 @@ object Printer : PrinterContract, WithLogging() {
                        shortUser: String,
                        queueName: String,
                        stream: InputStream,
-                       validate: (candidate: PrintRequest) -> Validation): PrintResponse {
+                       validate: Validator<PrintRequest>): PrintResponse {
 
         if (!tmpDir.exists() && !tmpDir.mkdirs()) {
             log.error("Failed to create tmp path ${tmpDir.absolutePath}")
@@ -75,34 +89,23 @@ object Printer : PrinterContract, WithLogging() {
         val id = Configs.generateId()
         log.debug("Printing job data $id")
         val tmpXz = File("${tmpDir.absolutePath}/$id.ps.xz")
-        val job = PrintJob(id, shortUser, jobName, tmpXz)
-        PrintJobs.create(job)
+        val job = PrintJob(id, shortUser, jobName)
+        PrintJobs.create(job, tmpXz)
 
         /*
          * Helper methods
          */
 
-        fun received() = update(id) {
-            it[received] = System.currentTimeMillis()
-        }
+        fun received() = PrintJobs.received(id)
 
-        fun processed(pageCount: Int, colourPageCount: Int) = update(id) {
-            it[processed] = System.currentTimeMillis()
-            it[this.pageCount] = pageCount
-            it[this.colourPageCount] = colourPageCount
-        }
+        fun processed(pageCount: Int, colourPageCount: Int) =
+                PrintJobs.processed(id, pageCount, colourPageCount)
 
-        fun printed(destination: String, cost: Int) = update(id) {
-            it[printed] = System.currentTimeMillis()
-            it[this.destination] = destination
-            it[quotaCost] = cost
-        }
+        fun printed(destination: String, cost: Int) =
+                PrintJobs.printed(id, destination, cost)
 
         fun failed(message: String) {
-            update(id) {
-                it[failed] = System.currentTimeMillis()
-                it[error] = message
-            }
+            PrintJobs.failed(id, message)
             cancel(id)
         }
 
@@ -142,7 +145,7 @@ object Printer : PrinterContract, WithLogging() {
                     //update page count and stage in db
                     processed(pageCount, colourPageCount)
 
-                    val destination = QueueManager.getDestination(queueName, pageCount)
+                    val destination = QueueManager.getDestination(queueName, job, pageCount)
                             ?: throw PrintException(INVALID_DESTINATION)
                     val request = PrintRequest(job, tmp, destination, psInfo.pages, colourPageCount)
 
@@ -165,7 +168,6 @@ object Printer : PrinterContract, WithLogging() {
             }
             return job
         } catch (e: Exception) {
-            // todo check if this is necessary, given that the submit code is handled separately
             log.error("Job $id failed", e)
             failed("Failed to process")
             return PrintError(PROCESS_FAILURE)

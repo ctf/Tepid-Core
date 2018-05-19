@@ -20,9 +20,15 @@ interface LoadBalancer {
      * By implementation, the list will have at least 2 candidates
      * 0 candidates will lead to an automatic rejection,
      * 1 candidate will lead to an automatic selection
+     *
+     * Note that calls here should be idempotent
+     * Only when a job because a request that is passed through [register] should the load balancer change its state
      */
     fun select(candidates: List<String>, job: PrintJob, pageCount: Int): String
 
+    /**
+     * Mark a request as processed by the load balancer
+     */
     fun register(request: PrintRequest)
 
     companion object {
@@ -60,7 +66,7 @@ object LoadBalancers {
      * Destroy the load balancer if it exists, and create a new one based on the [Queues.loadBalancer] key
      *
      * Throws [LoadBalancerException] if a valid queue has an invalid load balancer key
-     * See [Configs.loadBalancer]
+     * This should never happen so long as you update balancers with [Queues.updateLoadBalancer]
      */
     fun update(queue: String): LoadBalancer? {
         val balancerId = transaction {
@@ -68,8 +74,12 @@ object LoadBalancers {
         } ?: return null
         val newBalancer = Configs.loadBalancer(balancerId)
                 ?: throw LoadBalancerException("$balancerId could not be created for queue $queue")
-        balancers[queue] = newBalancer
-        return newBalancer
+        return update(queue, newBalancer)
+    }
+
+    fun update(queue: String, loadBalancer: LoadBalancer): LoadBalancer {
+        balancers[queue] = loadBalancer
+        return loadBalancer
     }
 
 }

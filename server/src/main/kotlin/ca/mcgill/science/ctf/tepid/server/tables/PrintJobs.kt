@@ -4,6 +4,7 @@ import ca.allanwang.kit.rx.RxWatcher
 import ca.mcgill.science.ctf.tepid.server.Configs
 import ca.mcgill.science.ctf.tepid.server.models.*
 import ca.mcgill.science.ctf.tepid.server.utils.Printer
+import ca.mcgill.science.ctf.tepid.server.utils.TepidException
 import org.jetbrains.exposed.sql.*
 import org.jetbrains.exposed.sql.statements.UpdateStatement
 import org.jetbrains.exposed.sql.transactions.transaction
@@ -57,17 +58,45 @@ object PrintJobs : Table() {
      */
     val error = varchar("error", 128).nullable()
 
-    fun create(job: PrintJob): Unit = transaction {
+    fun create(job: PrintJob, file: File): Unit = transaction {
         insert {
             it[id] = job.id
             it[shortUser] = job.shortUser
             it[name] = job.name
-            it[file] = job.file.absolutePath
+            it[this.file] = file.absolutePath
         }
     }
 
     operator fun get(id: String): ResultRow? =
             select { PrintJobs.id eq id }.firstOrNull()
+
+    /*
+     * Updaters
+     */
+    fun received(id: String) = update(id) {
+        it[received] = System.currentTimeMillis()
+    }
+
+    fun processed(id: String, pageCount: Int, colourPageCount: Int): Boolean {
+        if (pageCount < colourPageCount)
+            throw TepidException("PrintJob $id: page count ($pageCount) cannot be less than colour page count ($colourPageCount)")
+        return update(id) {
+            it[processed] = System.currentTimeMillis()
+            it[this.pageCount] = pageCount
+            it[this.colourPageCount] = colourPageCount
+        }
+    }
+
+    fun printed(id: String, destination: String, cost: Int) = update(id) {
+        it[printed] = System.currentTimeMillis()
+        it[this.destination] = destination
+        it[quotaCost] = cost
+    }
+
+    fun failed(id: String, message: String) = update(id) {
+        it[failed] = System.currentTimeMillis()
+        it[error] = message
+    }
 
     /**
      * Gets the total quota cost used by the short user
@@ -83,7 +112,7 @@ object PrintJobs : Table() {
      * Returns [true] if a row was updated in the transaction, and [false] otherwise
      */
     fun update(id: String, action: PrintJobs.(UpdateStatement) -> Unit): Boolean =
-            update({ PrintJobs.id eq id }, 1, action) == 1
+            transaction { update({ PrintJobs.id eq id }, 1, action) == 1 }
 
     fun update(job: PrintJob, action: PrintJobs.(UpdateStatement) -> Unit): Boolean =
             update(job.id, action)
@@ -125,21 +154,22 @@ object PrintJobs : Table() {
             when {
                 failed != -1L -> Failed(failed, error)
                 printed != -1L -> Printed(printed, destination, pageCount, colourPageCount)
-                received != -1L -> Received(received, fileSize)
                 processed != -1L -> Processed(processed)
+                received != -1L -> Received(received, fileSize)
                 else -> Created(created)
             }
         } ?: NotFound
     }
 
-    private val watcher = PrintStageWatcher()
+    private val watcher: PrintStageWatcher by lazy { PrintStageWatcher() }
 
     fun watch(id: String) = watcher.watch(id)
 
 }
 
-class PrintStageWatcher : RxWatcher<String, PrintStage>() {
-    override val pollingInterval: Long = 1000L
+class PrintStageWatcher(
+        override val pollingInterval: Long = Configs.jobWatcherFrequency
+) : RxWatcher<String, PrintStage>() {
     override val timeoutDuration: Long = 120000L
 
     override fun emit(id: String): PrintStage = PrintJobs.stage(id)

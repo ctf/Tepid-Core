@@ -3,8 +3,6 @@ package ca.mcgill.science.ctf.tepid.server.models
 import ca.mcgill.science.ctf.tepid.server.Configs
 import ca.mcgill.science.ctf.tepid.server.tables.PrintJobs
 import ca.mcgill.science.ctf.tepid.server.utils.Printer
-import org.jetbrains.exposed.sql.select
-import org.jetbrains.exposed.sql.transactions.transaction
 import java.io.File
 
 /**
@@ -28,14 +26,7 @@ data class PrintJob(
         /**
          * Unique identifier for the user who is printing
          */
-        val shortUser: String,
-        /**
-         * Processed compressed postscript file
-         * Note that to print, the file must be decompressed.
-         * Decompression will be handled internally and sent through
-         * [PrintRequest.file]
-         */
-        val file: File) : PrintResponse() {
+        val shortUser: String) : PrintResponse() {
 
     /**
      * Fetch the current print job stage from the db
@@ -69,7 +60,16 @@ data class PrintRequest(val job: PrintJob,
     val quotaCost: Int
         get() = (pageCount - colourPageCount) + colourPageCount * Configs.colourPageValue
 
-    fun hasSufficientQuota(quota: Int) = quotaCost < quota
+    /**
+     * Fetches quota from database and check if it is greater than the cost
+     */
+    fun hasSufficientQuota(): Boolean {
+        val baseQuota = Configs.baseQuota(job.shortUser)
+        val quotaUsed = PrintJobs.getTotalQuotaUsed(job.shortUser)
+        return hasSufficientQuota(baseQuota - quotaUsed)
+    }
+
+    fun hasSufficientQuota(quota: Int): Boolean = quotaCost < quota
 }
 
 /**
@@ -83,4 +83,6 @@ data class Processed(val time: Long) : PrintStage(false)
 data class Received(val time: Long, val fileSize: Long) : PrintStage(false)
 data class Printed(val time: Long, val destination: String, val pageCount: Int, val colourPageCount: Int) : PrintStage(true)
 data class Failed(val time: Long, val message: String) : PrintStage(true)
-object NotFound : PrintStage(true)
+object NotFound : PrintStage(true) {
+    override fun toString(): String = "NotFound"
+}

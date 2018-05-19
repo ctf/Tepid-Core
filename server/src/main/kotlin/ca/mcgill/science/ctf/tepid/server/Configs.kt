@@ -2,9 +2,12 @@ package ca.mcgill.science.ctf.tepid.server
 
 import ca.allanwang.kit.logger.WithLogging
 import ca.allanwang.kit.utils.os
+import ca.mcgill.science.ctf.tepid.server.Configs.baseQuota
+import ca.mcgill.science.ctf.tepid.server.Configs.dbConfigs
 import ca.mcgill.science.ctf.tepid.server.models.DbConfigs
 import ca.mcgill.science.ctf.tepid.server.models.PrintRequest
 import ca.mcgill.science.ctf.tepid.server.models.connect
+import ca.mcgill.science.ctf.tepid.server.tables.PrintJobs
 import ca.mcgill.science.ctf.tepid.server.utils.LoadBalancer
 import ca.mcgill.science.ctf.tepid.server.utils.TepidException
 import ca.mcgill.science.ctf.tepid.server.utils.Utils
@@ -14,8 +17,40 @@ import java.math.BigInteger
 /**
  * Set of configs to handle specific actions within tepid
  * Update using [Tepid.configure]
+ *
+ * Most arguments already have defaults, but the following must be provided:
+ * [dbConfigs], [baseQuota]
  */
 object Configs : WithLogging() {
+
+    /*
+     * ---------------------------------------------------
+     * Mandatory Configs
+     * ---------------------------------------------------
+     */
+
+    /**
+     * Configurations used to connect to the database
+     */
+    var dbConfigs: DbConfigs? = null
+        set(value) {
+            field = value
+            if (value == null)
+                fail("DbConfigs cannot be null")
+            value.connect()
+        }
+
+    /**
+     * Function to get the base quota of a user
+     * This will be called from many threads
+     */
+    lateinit var baseQuota: (shortUser: String) -> Int
+
+    /*
+     * ---------------------------------------------------
+     * Optional Configs
+     * ---------------------------------------------------
+     */
 
     /**
      * Unique id generator
@@ -37,6 +72,18 @@ object Configs : WithLogging() {
     var loadBalancer: (key: String) -> LoadBalancer? = LoadBalancer.Companion::fromName
 
     /**
+     * General estimation factor used by the load balancers
+     * Value should be the duration in ms to print a single page
+     */
+    var pageToMsFactor: Long = 1500
+
+    /**
+     * Frequency in ms to check for job updates
+     * Used in [PrintJobs.watch]
+     */
+    var jobWatcherFrequency: Long = 1000
+
+    /**
      * Time in ms to keep postscript files
      * Defaults to 1 day
      */
@@ -47,23 +94,6 @@ object Configs : WithLogging() {
      * By default, monochrome pages = 1 quota, colour pages = 3 quota
      */
     var colourPageValue: Int = 3
-
-    /**
-     * Configurations used to connect to the database
-     */
-    var dbConfigs: DbConfigs? = null
-        set(value) {
-            field = value
-            if (value == null)
-                fail("DbConfigs cannot be null")
-            value.connect()
-        }
-
-    /**
-     * Function to get the base quota of a user
-     * This will be called from many threads
-     */
-    lateinit var baseQuota: (shortUser: String) -> Int
 
     /**
      * Given a print job, execute the command to print

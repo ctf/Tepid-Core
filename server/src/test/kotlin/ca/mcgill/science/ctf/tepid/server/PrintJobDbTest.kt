@@ -1,7 +1,9 @@
 package ca.mcgill.science.ctf.tepid.server
 
 import ca.mcgill.science.ctf.tepid.server.internal.TestConfigs
+import ca.mcgill.science.ctf.tepid.server.internal.testCreate
 import ca.mcgill.science.ctf.tepid.server.internal.testTransaction
+import ca.mcgill.science.ctf.tepid.server.internal.testUser
 import ca.mcgill.science.ctf.tepid.server.models.PrintJob
 import ca.mcgill.science.ctf.tepid.server.tables.PrintJobs
 import org.junit.Test
@@ -19,8 +21,7 @@ class PrintJobDbTest {
     fun createAndFetch() = testTransaction {
         PrintJobs.create(PrintJob("testId",
                 "testName",
-                "testUser",
-                Configs.tmpDir.resolve("testFile.ps")))
+                "testUser"), Configs.tmpDir.resolve("testFile.ps"))
 
         val data = PrintJobs["testId"]?.let {
             with(PrintJobs) {
@@ -47,8 +48,6 @@ class PrintJobDbTest {
     @Test
     fun totalQuotaUsed() = testTransaction {
 
-        val testUser = "test20"
-
         fun assertQuotaEquals(expected: Int, message: String) =
                 assertEquals(expected, PrintJobs.getTotalQuotaUsed(testUser), message)
 
@@ -56,8 +55,7 @@ class PrintJobDbTest {
 
         // add printed job 1
 
-        val job1 = PrintJob("job1Id", "job1", testUser, Configs.tmpDir.resolve("job1.ps"))
-        PrintJobs.create(job1)
+        val job1 = PrintJobs.testCreate("job1")
         PrintJobs.update(job1) {
             it[printed] = System.currentTimeMillis()
             it[quotaCost] = 35
@@ -67,8 +65,7 @@ class PrintJobDbTest {
 
         assertQuotaEquals(35, "Quota used did not update after printed job")
 
-        val job2 = PrintJob("job2Id", "job2", testUser, Configs.tmpDir.resolve("job2.ps"))
-        PrintJobs.create(job2)
+        val job2 = PrintJobs.testCreate("job2")
         PrintJobs.update(job2) {
             it[processed] = System.currentTimeMillis()
             it[quotaCost] = 10

@@ -37,6 +37,8 @@ object TestConfigs {
                         ?.get(1)
                         ?.toInt() ?: 1000
             }
+
+            jobWatcherFrequency = 200L
         }
         testTransaction { }
     }

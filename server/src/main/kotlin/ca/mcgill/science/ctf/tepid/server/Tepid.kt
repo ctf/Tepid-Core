@@ -15,10 +15,7 @@ object Tepid : WithLogging(),
      * Configuration method
      * This must be called at least once before any other part of tepid is used
      *
-     * Most arguments already have defaults, but the following must be provided:
-     * [Configs.dbConfigs], [Configs.baseQuota]
-     *
-     * See [Configs] for all attributes
+     * See [Configs] for all attributes, and mandatory attribute specifications
      *
      */
     fun configure(action: Configs.() -> Unit) {
