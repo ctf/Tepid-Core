@@ -4,8 +4,6 @@ import ca.allanwang.kit.logger.WithLogging
 import ca.mcgill.science.ctf.tepid.server.Configs
 import ca.mcgill.science.ctf.tepid.server.models.*
 import ca.mcgill.science.ctf.tepid.server.tables.PrintJobs
-import org.jetbrains.exposed.sql.statements.UpdateStatement
-import org.jetbrains.exposed.sql.transactions.transaction
 import org.tukaani.xz.XZInputStream
 import org.tukaani.xz.XZOutputStream
 import java.io.*
@@ -66,10 +64,6 @@ object Printer : PrinterContract, WithLogging() {
 
     private inline val tmpDir: File
         get() = Configs.tmpDir
-
-    private fun update(id: String, body: PrintJobs.(UpdateStatement) -> Unit): Boolean = transaction {
-        PrintJobs.update(id, body)
-    }
 
     override fun print(jobName: String,
                        shortUser: String,

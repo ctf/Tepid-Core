@@ -10,7 +10,15 @@ import org.jetbrains.exposed.sql.select
 import org.jetbrains.exposed.sql.transactions.transaction
 import org.jetbrains.exposed.sql.update
 
-object Queues : Table(), Loggable by WithLogging("Queues") {
+interface QueuesContract {
+    /**
+     * Save the new load balancer in the db if it's valid and reload it
+     * Returns [true] if the load balancer has changed, and [false] otherwise
+     */
+    fun updateLoadBalancer(id: String, loadBalancer: String): Boolean
+}
+
+object Queues : Table(), QueuesContract, Loggable by WithLogging("Queues") {
     /**
      * Unique identifier
      */
@@ -22,11 +30,7 @@ object Queues : Table(), Loggable by WithLogging("Queues") {
 
     val loadBalancer = varchar("load_balancer", 32).default(LoadBalancer.DEFAULT)
 
-    /**
-     * Save the new load balancer in the db if it's valid and reload it
-     * Returns [true] if the load balancer has changed, and [false] otherwise
-     */
-    fun updateLoadBalancer(id: String, loadBalancer: String): Boolean {
+    override fun updateLoadBalancer(id: String, loadBalancer: String): Boolean {
         val oldBalancerName = transaction {
             Queues.select { Queues.id eq id }.firstOrNull()?.get(Queues.loadBalancer)
         }

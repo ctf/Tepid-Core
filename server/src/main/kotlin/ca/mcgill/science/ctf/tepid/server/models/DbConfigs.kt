@@ -1,7 +1,6 @@
 package ca.mcgill.science.ctf.tepid.server.models
 
 import ca.mcgill.science.ctf.tepid.server.Configs
-import ca.mcgill.science.ctf.tepid.server.utils.TepidException
 import org.apache.logging.log4j.LogManager
 import org.jetbrains.exposed.sql.Database
 

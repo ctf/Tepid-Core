@@ -51,16 +51,13 @@ interface LoadBalancer {
 
 class LoadBalancerException(message: String) : TepidException(message)
 
-object LoadBalancers {
-
-    private val balancers: MutableMap<String, LoadBalancer> = ConcurrentHashMap()
+interface LoadBalancersContract {
 
     /**
      * Get the load balancer for the specified queue
      * So long as the queue is a valid [Queues.id], a nonnull load balancer will be returned
      */
-    operator fun get(queue: String): LoadBalancer? =
-            balancers[queue] ?: update(queue)
+    operator fun get(queue: String): LoadBalancer?
 
     /**
      * Destroy the load balancer if it exists, and create a new one based on the [Queues.loadBalancer] key
@@ -68,7 +65,17 @@ object LoadBalancers {
      * Throws [LoadBalancerException] if a valid queue has an invalid load balancer key
      * This should never happen so long as you update balancers with [Queues.updateLoadBalancer]
      */
-    fun update(queue: String): LoadBalancer? {
+    fun update(queue: String): LoadBalancer?
+}
+
+object LoadBalancers : LoadBalancersContract {
+
+    private val balancers: MutableMap<String, LoadBalancer> = ConcurrentHashMap()
+
+    override operator fun get(queue: String): LoadBalancer? =
+            balancers[queue] ?: update(queue)
+
+    override fun update(queue: String): LoadBalancer? {
         val balancerId = transaction {
             Queues.select { Queues.id eq queue }.firstOrNull()?.get(Queues.loadBalancer)
         } ?: return null

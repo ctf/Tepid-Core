@@ -1,16 +1,90 @@
 package ca.mcgill.science.ctf.tepid.server.tables
 
+import ca.allanwang.kit.logger.Loggable
+import ca.allanwang.kit.logger.WithLogging
 import ca.allanwang.kit.rx.RxWatcher
 import ca.mcgill.science.ctf.tepid.server.Configs
 import ca.mcgill.science.ctf.tepid.server.models.*
 import ca.mcgill.science.ctf.tepid.server.utils.Printer
 import ca.mcgill.science.ctf.tepid.server.utils.TepidException
+import io.reactivex.Observable
 import org.jetbrains.exposed.sql.*
 import org.jetbrains.exposed.sql.statements.UpdateStatement
 import org.jetbrains.exposed.sql.transactions.transaction
 import java.io.File
 
-object PrintJobs : Table() {
+interface PrintJobsContract {
+    /**
+     * Insert the job into the db
+     */
+    fun create(job: PrintJob, file: File)
+
+    /**
+     * Remove all files past the [Configs.expiration]
+     * Those that are purged will be flagged as [PrintJobs.deleted]
+     */
+    fun purge()
+
+    /**
+     * Gets the result row associated with the id if it exists
+     * Note that this is not wrapped in a [transaction]
+     */
+    operator fun get(id: String): ResultRow?
+
+    /**
+     * Mark the job as received
+     */
+    fun received(id: String): Boolean
+
+    /**
+     * Mark the job as processed
+     */
+    fun processed(id: String, pageCount: Int, colourPageCount: Int): Boolean
+
+    /**
+     * Mark the job as printed
+     */
+    fun printed(id: String, destination: String, cost: Int): Boolean
+
+    /**
+     * Markt he job as failed
+     */
+    fun failed(id: String, message: String): Boolean
+
+    /**
+     * Gets the total quota cost used by the short user
+     * Jobs counted are those that have printed and are not refunded
+     */
+    fun getTotalQuotaUsed(shortUser: String): Int
+
+    /**
+     * Helper function to update the print job of the given [id]
+     *
+     * Returns [true] if a row was updated in the transaction, and [false] otherwise
+     */
+    fun update(id: String, action: PrintJobs.(UpdateStatement) -> Unit): Boolean
+
+    /**
+     * See [update]
+     */
+    fun update(job: PrintJob, action: PrintJobs.(UpdateStatement) -> Unit): Boolean =
+            PrintJobs.update(job.id, action)
+
+    /**
+     * Receives the print stage for the supplied job
+     * See [PrintStage] for class options
+     */
+    fun stage(id: String): PrintStage
+
+    /**
+     * Returns an observable that emits the print stages of the job with the supplied [id]
+     * See [PrintStage] for class options
+     * Emissions are polled every [Configs.jobWatcherFrequency] ms
+     */
+    fun watch(id: String): Observable<PrintStage>
+}
+
+object PrintJobs : Table(), PrintJobsContract, Loggable by WithLogging("PrintJobs") {
     val id = varchar("id", 128).primaryKey()
     val shortUser = varchar("shortUser", 64)
     val name = varchar("name", 128)
@@ -41,6 +115,8 @@ object PrintJobs : Table() {
      */
     val refunded = bool("refunded").default(false)
 
+    val deleted = bool("deleted").default(false)
+
     /*
      * Time stamps
      */
@@ -58,7 +134,7 @@ object PrintJobs : Table() {
      */
     val error = varchar("error", 128).nullable()
 
-    fun create(job: PrintJob, file: File): Unit = transaction {
+    override fun create(job: PrintJob, file: File): Unit = transaction {
         insert {
             it[id] = job.id
             it[shortUser] = job.shortUser
@@ -67,17 +143,36 @@ object PrintJobs : Table() {
         }
     }
 
-    operator fun get(id: String): ResultRow? =
+    override fun purge() {
+        val purgeTime = System.currentTimeMillis() - Configs.expiration
+        val files = transaction {
+            select { (created lessEq purgeTime) and (deleted eq false) }.map {
+                it[file]
+            }
+        }
+        files.map(::File).filter(File::isFile).forEach { it.delete() }
+        log.info("Purged ${files.size} files")
+        val updateCount = transaction {
+            update({ (created lessEq purgeTime) and (deleted eq false) }) {
+                it[deleted] = true
+            }
+        }
+        if (updateCount != files.size)
+            log.warn("Update count $updateCount does not match purge size ${files.size}")
+    }
+
+    override operator fun get(id: String): ResultRow? =
             select { PrintJobs.id eq id }.firstOrNull()
 
     /*
      * Updaters
      */
-    fun received(id: String) = update(id) {
+
+    override fun received(id: String) = update(id) {
         it[received] = System.currentTimeMillis()
     }
 
-    fun processed(id: String, pageCount: Int, colourPageCount: Int): Boolean {
+    override fun processed(id: String, pageCount: Int, colourPageCount: Int): Boolean {
         if (pageCount < colourPageCount)
             throw TepidException("PrintJob $id: page count ($pageCount) cannot be less than colour page count ($colourPageCount)")
         return update(id) {
@@ -87,41 +182,27 @@ object PrintJobs : Table() {
         }
     }
 
-    fun printed(id: String, destination: String, cost: Int) = update(id) {
+    override fun printed(id: String, destination: String, cost: Int) = update(id) {
         it[printed] = System.currentTimeMillis()
         it[this.destination] = destination
         it[quotaCost] = cost
     }
 
-    fun failed(id: String, message: String) = update(id) {
+    override fun failed(id: String, message: String) = update(id) {
         it[failed] = System.currentTimeMillis()
         it[error] = message
     }
 
-    /**
-     * Gets the total quota cost used by the short user
-     * Jobs counted are those that have printed and are not refunded
-     */
-    fun getTotalQuotaUsed(shortUser: String): Int = transaction {
+
+    override fun getTotalQuotaUsed(shortUser: String): Int = transaction {
         select { (PrintJobs.shortUser eq shortUser) and (printed neq -1) and (refunded eq false) }.sumBy { it[quotaCost] }
     }
 
-    /**
-     * Helper function to update the print job of the given [id]
-     *
-     * Returns [true] if a row was updated in the transaction, and [false] otherwise
-     */
-    fun update(id: String, action: PrintJobs.(UpdateStatement) -> Unit): Boolean =
+    override fun update(id: String, action: PrintJobs.(UpdateStatement) -> Unit): Boolean =
             transaction { update({ PrintJobs.id eq id }, 1, action) == 1 }
 
-    fun update(job: PrintJob, action: PrintJobs.(UpdateStatement) -> Unit): Boolean =
-            update(job.id, action)
 
-    /**
-     * Receives the print stage for the supplied job
-     * See [PrintStage] for class options
-     */
-    fun stage(id: String): PrintStage = transaction {
+    override fun stage(id: String): PrintStage = transaction {
         get(id)?.run {
 
             // lazy retrievers
@@ -163,7 +244,7 @@ object PrintJobs : Table() {
 
     private val watcher: PrintStageWatcher by lazy { PrintStageWatcher() }
 
-    fun watch(id: String) = watcher.watch(id)
+    override fun watch(id: String) = watcher.watch(id)
 
 }
 

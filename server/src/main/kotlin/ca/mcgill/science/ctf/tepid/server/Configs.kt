@@ -13,6 +13,7 @@ import ca.mcgill.science.ctf.tepid.server.utils.TepidException
 import ca.mcgill.science.ctf.tepid.server.utils.Utils
 import java.io.File
 import java.math.BigInteger
+import java.util.concurrent.TimeUnit
 
 /**
  * Set of configs to handle specific actions within tepid
@@ -20,6 +21,8 @@ import java.math.BigInteger
  *
  * Most arguments already have defaults, but the following must be provided:
  * [dbConfigs], [baseQuota]
+ *
+ * Given the nature of the printing system, every function here should be thread safe
  */
 object Configs : WithLogging() {
 
@@ -42,7 +45,6 @@ object Configs : WithLogging() {
 
     /**
      * Function to get the base quota of a user
-     * This will be called from many threads
      */
     lateinit var baseQuota: (shortUser: String) -> Int
 
@@ -56,7 +58,7 @@ object Configs : WithLogging() {
      * Unique id generator
      */
     var generateId: () -> String = {
-        BigInteger(130, Utils.random).toString(32)
+        BigInteger(130, Utils.secureRandom).toString(32)
     }
 
     /**
@@ -87,7 +89,7 @@ object Configs : WithLogging() {
      * Time in ms to keep postscript files
      * Defaults to 1 day
      */
-    var expiration: Long = 1L * 24 * 60 * 60 * 100
+    var expiration: Long = TimeUnit.DAYS.toMillis(1)
 
     /**
      * The amount of quota deducted for printing one page in colour

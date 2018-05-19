@@ -7,8 +7,8 @@ import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 import java.security.SecureRandom
 
-object Utils {
-    internal val random = SecureRandom()
+internal object Utils {
+    internal val secureRandom = SecureRandom()
 }
 
 /**

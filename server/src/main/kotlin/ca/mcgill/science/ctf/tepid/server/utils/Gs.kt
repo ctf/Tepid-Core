@@ -23,7 +23,6 @@ interface GsContract {
      * Returns null if the process fails to launch
      */
     fun psInfo(f: File): PsData?
-
 }
 
 /**
