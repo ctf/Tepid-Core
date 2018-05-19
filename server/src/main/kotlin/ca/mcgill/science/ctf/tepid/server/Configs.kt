@@ -34,7 +34,7 @@ object Configs : WithLogging() {
     /**
      * Given an identifier, create a load balancer
      */
-    var loadBalancer: (key: String) -> LoadBalancer? = { TODO("Add interfaces") }
+    var loadBalancer: (key: String) -> LoadBalancer? = LoadBalancer.Companion::fromName
 
     /**
      * Time in ms to keep postscript files

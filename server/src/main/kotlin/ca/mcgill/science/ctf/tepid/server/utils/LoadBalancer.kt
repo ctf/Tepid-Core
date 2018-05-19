@@ -1,6 +1,8 @@
 package ca.mcgill.science.ctf.tepid.server.utils
 
 import ca.mcgill.science.ctf.tepid.server.Configs
+import ca.mcgill.science.ctf.tepid.server.loadbalancers.RoundRobin
+import ca.mcgill.science.ctf.tepid.server.loadbalancers.ShortestWait
 import ca.mcgill.science.ctf.tepid.server.models.PrintJob
 import ca.mcgill.science.ctf.tepid.server.models.PrintRequest
 import ca.mcgill.science.ctf.tepid.server.tables.Queues
@@ -14,16 +16,31 @@ interface LoadBalancer {
      * select one of the ids
      *
      * Returned id should be one of the candidates
+     *
+     * By implementation, the list will have at least 2 candidates
+     * 0 candidates will lead to an automatic rejection,
+     * 1 candidate will lead to an automatic selection
      */
     fun select(candidates: List<String>, job: PrintJob, pageCount: Int): String
 
     fun register(request: PrintRequest)
 
-    /**
-     * Marks the load balancer as invalid
-     * Anything that can be released should be done so here
-     */
-    fun destroy()
+    companion object {
+        const val DEFAULT = "default"
+        const val ROUND_ROBIN = "round_robin"
+        const val SHORTEST_WAIT = "shortest_wait"
+
+        /**
+         * Get one of the packaged load balancers by key
+         */
+        fun fromName(name: String): LoadBalancer? = when (name) {
+            DEFAULT -> RoundRobin()
+            ROUND_ROBIN -> RoundRobin()
+            SHORTEST_WAIT -> ShortestWait()
+            else -> null
+        }
+    }
+
 }
 
 class LoadBalancerException(message: String) : TepidException(message)
@@ -46,7 +63,6 @@ object LoadBalancers {
      * See [Configs.loadBalancer]
      */
     fun update(queue: String): LoadBalancer? {
-        balancers[queue]?.destroy()
         val balancerId = transaction {
             Queues.select { Queues.id eq queue }.firstOrNull()?.get(Queues.loadBalancer)
         } ?: return null
